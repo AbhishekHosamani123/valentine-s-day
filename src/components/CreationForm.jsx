@@ -2,16 +2,12 @@
 
 import { useState, useEffect } from "react"
 import { supabase } from "@/lib/supabaseClient"
-import { Upload, X, LogIn, UserPlus, Heart, Sparkles, Wand2, Lock, Copy } from "lucide-react"
+import { Upload, X, Heart, Sparkles, Wand2, Lock, Copy } from "lucide-react"
 import Link from "next/link"
 
 export default function CreationForm() {
-    const [session, setSession] = useState(null)
     const [loading, setLoading] = useState(true)
-    const [view, setView] = useState("login") // login, signup, form, success
-    const [email, setEmail] = useState("")
-    const [password, setPassword] = useState("")
-    const [authError, setAuthError] = useState("")
+    const [view, setView] = useState("form") // form, success
     const [uploading, setUploading] = useState(false)
 
     // Form Data
@@ -24,52 +20,25 @@ export default function CreationForm() {
     const [isPaid, setIsPaid] = useState(false)
 
     useEffect(() => {
-        // Check for existing session
-        supabase.auth.getSession().then(({ data: { session } }) => {
-            setSession(session)
-            if (session) {
-                // Check local storage for created Valentine
-                const savedId = localStorage.getItem("valentine_created_id")
-                if (savedId) {
-                    setCreatedId(savedId)
-                    setView("success")
-                    // Fetch payment status
-                    supabase.from("valentines").select("payment_status").eq("id", savedId).single()
-                        .then(({ data }) => {
-                            if (data?.payment_status === "paid") setIsPaid(true)
-                        })
-                } else {
-                    setView("form")
-                }
+        // Check local storage for created Valentine
+        const savedId = localStorage.getItem("valentine_created_id")
+        if (savedId) {
+            setCreatedId(savedId)
+            setView("success")
+            // Fetch payment status
+            supabase.from("valentines").select("payment_status").eq("id", savedId).single()
+                .then(({ data }) => {
+                    if (data?.payment_status === "paid") setIsPaid(true)
+                })
+        } else {
+            setView("form")
+        }
 
-                // Check preview count
-                const savedCount = localStorage.getItem("valentine_preview_count")
-                if (savedCount) setPreviewCount(parseInt(savedCount))
-            }
-            setLoading(false)
-        })
+        // Check preview count
+        const savedCount = localStorage.getItem("valentine_preview_count")
+        if (savedCount) setPreviewCount(parseInt(savedCount))
 
-        const {
-            data: { subscription },
-        } = supabase.auth.onAuthStateChange((_event, session) => {
-            setSession(session)
-            if (session) {
-                const savedId = localStorage.getItem("valentine_created_id")
-                if (savedId) {
-                    setCreatedId(savedId)
-                    setView("success")
-                    supabase.from("valentines").select("payment_status").eq("id", savedId).single()
-                        .then(({ data }) => {
-                            if (data?.payment_status === "paid") setIsPaid(true)
-                        })
-                } else {
-                    setView("form")
-                }
-            }
-            else setView("login")
-        })
-
-        return () => subscription.unsubscribe()
+        setLoading(false)
     }, [])
 
     const handlePreview = () => {
@@ -129,28 +98,6 @@ export default function CreationForm() {
         paymentObject.open();
     };
 
-
-
-    const handleLogin = async (e) => {
-        e.preventDefault()
-        setAuthError("")
-        const { error } = await supabase.auth.signInWithPassword({ email, password })
-        if (error) setAuthError(error.message)
-    }
-
-    const handleSignup = async (e) => {
-        e.preventDefault()
-        setAuthError("")
-        const { error } = await supabase.auth.signUp({ email, password })
-        if (error) setAuthError(error.message)
-        else alert("✅ Check your email for the confirmation link!")
-    }
-
-    const handleLogout = async () => {
-        await supabase.auth.signOut()
-        setView("login")
-    }
-
     const handleFileChange = (e) => {
         if (e.target.files) {
             const newFiles = Array.from(e.target.files).filter(f => f.type.startsWith('image/'))
@@ -185,7 +132,21 @@ export default function CreationForm() {
             const urls = []
             for (const f of files) {
                 const path = `${Date.now()}_${f.name.replace(/[^a-zA-Z0-9.-]/g, '')}`
-                const { error: uploadError } = await supabase.storage.from('photos').upload(path, f)
+
+                // Get signed URL
+                const signRes = await fetch('/api/sign-upload', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ path }),
+                })
+                const signData = await signRes.json()
+                if (!signRes.ok) throw new Error(signData.error || 'Failed to sign upload')
+
+                // Upload to signed URL using the token
+                const { error: uploadError } = await supabase.storage
+                    .from('photos')
+                    .uploadToSignedUrl(path, signData.token, f)
+
                 if (uploadError) throw uploadError
 
                 const { data: { publicUrl } } = supabase.storage.from('photos').getPublicUrl(path)
@@ -196,22 +157,41 @@ export default function CreationForm() {
             let musicUrl = null
             if (musicFile) {
                 const musicPath = `music/${Date.now()}_${musicFile.name.replace(/[^a-zA-Z0-9.-]/g, '')}`
-                const { error: musicUploadError } = await supabase.storage.from('photos').upload(musicPath, musicFile)
+
+                // Get signed URL for music
+                const signMusicRes = await fetch('/api/sign-upload', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ path: musicPath }),
+                })
+                const signMusicData = await signMusicRes.json()
+                if (!signMusicRes.ok) throw new Error(signMusicData.error || 'Failed to sign music upload')
+
+                const { error: musicUploadError } = await supabase.storage
+                    .from('photos')
+                    .uploadToSignedUrl(musicPath, signMusicData.token, musicFile)
+
                 if (musicUploadError) throw musicUploadError
 
                 const { data: { publicUrl } } = supabase.storage.from('photos').getPublicUrl(musicPath)
                 musicUrl = publicUrl
             }
 
-            const { data, error: insertError } = await supabase
-                .from('valentines')
-                .insert([{ partner_name: name, message: message, photos: urls, music_url: musicUrl }])
-                .select()
+            // Call API to create valentine
+            const res = await fetch('/api/create-valentine', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ partner_name: name, message: message, photos: urls, music_url: musicUrl }),
+            })
 
-            if (insertError) throw insertError
+            const data = await res.json()
 
-            setCreatedId(data[0].id)
-            localStorage.setItem("valentine_created_id", data[0].id)
+            if (!res.ok) {
+                throw new Error(data.error || 'Failed to create valentine')
+            }
+
+            setCreatedId(data.id)
+            localStorage.setItem("valentine_created_id", data.id)
             setView("success")
         } catch (error) {
             console.error(error)
@@ -229,64 +209,6 @@ export default function CreationForm() {
         <div className="min-h-screen bg-pink-50 text-gray-800 font-sans flex items-center justify-center p-4">
             <div className="w-full max-w-2xl">
 
-                {/* Auth Screen */}
-                {(view === "login" || view === "signup") && (
-                    <div className="bg-white rounded-2xl shadow-xl overflow-hidden border-t-8 border-pink-500">
-                        <div className="p-8">
-                            <h1 className="text-3xl font-bold text-gray-900 mb-2">Welcome Back! 👋</h1>
-                            <p className="text-gray-600 mb-4">Please {view === "login" ? "login" : "sign up"} to access the form.</p>
-
-                            <p className="text-sm text-gray-500 bg-pink-50 p-3 rounded-lg border border-pink-100 mb-6">
-                                Before you start, check out a <a href={demoLink} target="_blank" className="text-pink-600 underline font-medium hover:text-pink-700">Demo Website</a> to see what you are building! 💖
-                            </p>
-
-                            <form onSubmit={view === "login" ? handleLogin : handleSignup} className="space-y-4">
-                                <div>
-                                    <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
-                                    <input
-                                        type="email"
-                                        value={email}
-                                        onChange={e => setEmail(e.target.value)}
-                                        className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-pink-500 focus:border-transparent outline-none transition"
-                                        placeholder="Enter your email"
-                                        required
-                                    />
-                                </div>
-                                <div>
-                                    <label className="block text-sm font-medium text-gray-700 mb-1">Password</label>
-                                    <input
-                                        type="password"
-                                        value={password}
-                                        onChange={e => setPassword(e.target.value)}
-                                        className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-pink-500 focus:border-transparent outline-none transition"
-                                        placeholder="Enter your password"
-                                        required
-                                    />
-                                </div>
-
-                                {authError && <p className="text-red-500 text-sm">{authError}</p>}
-
-                                <div className="flex justify-between items-center pt-4">
-                                    <button
-                                        type="button"
-                                        onClick={() => { setView(view === "login" ? "signup" : "login"); setAuthError(""); }}
-                                        className="text-pink-600 hover:text-pink-700 text-sm font-medium"
-                                    >
-                                        {view === "login" ? "Need an account? Sign Up" : "Have an account? Login"}
-                                    </button>
-                                    <button
-                                        type="submit"
-                                        className="bg-pink-500 text-white px-6 py-2.5 rounded-lg font-semibold hover:bg-pink-600 transition shadow-md flex items-center gap-2"
-                                    >
-                                        <LogIn className="w-4 h-4" />
-                                        {view === "login" ? "Login" : "Sign Up"}
-                                    </button>
-                                </div>
-                            </form>
-                        </div>
-                    </div>
-                )}
-
                 {/* Form Screen */}
                 {view === "form" && (
                     <div className="bg-white rounded-2xl shadow-xl overflow-hidden border-t-8 border-pink-500">
@@ -295,7 +217,6 @@ export default function CreationForm() {
                                 <h1 className="text-2xl font-bold text-gray-900">Share Your Secrets 🤫</h1>
                                 <p className="text-gray-500 text-sm mt-1">Fill out this form to create your valentine page.</p>
                             </div>
-                            <button onClick={handleLogout} className="text-gray-500 hover:text-gray-700 text-sm underline">Logout</button>
                         </div>
 
                         <div className="p-8 space-y-6">

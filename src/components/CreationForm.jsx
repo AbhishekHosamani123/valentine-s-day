@@ -14,7 +14,7 @@ export default function CreationForm() {
     const [name, setName] = useState("")
     const [message, setMessage] = useState("")
     const [files, setFiles] = useState([])
-    const [musicFile, setMusicFile] = useState(null)
+
     const [createdId, setCreatedId] = useState(null)
     const [previewCount, setPreviewCount] = useState(0)
     const [isPaid, setIsPaid] = useState(false)
@@ -105,16 +105,7 @@ export default function CreationForm() {
         }
     }
 
-    const handleMusicChange = (e) => {
-        if (e.target.files && e.target.files[0]) {
-            const file = e.target.files[0]
-            if (file.type.startsWith('audio/')) {
-                setMusicFile(file)
-            } else {
-                alert("Please upload an audio file (MP3)")
-            }
-        }
-    }
+
 
     const removeFile = (index) => {
         setFiles(prev => prev.filter((_, i) => i !== index))
@@ -153,29 +144,8 @@ export default function CreationForm() {
                 urls.push(publicUrl)
             }
 
-            // Upload Music if exists
             let musicUrl = null
-            if (musicFile) {
-                const musicPath = `music/${Date.now()}_${musicFile.name.replace(/[^a-zA-Z0-9.-]/g, '')}`
 
-                // Get signed URL for music
-                const signMusicRes = await fetch('/api/sign-upload', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ path: musicPath }),
-                })
-                const signMusicData = await signMusicRes.json()
-                if (!signMusicRes.ok) throw new Error(signMusicData.error || 'Failed to sign music upload')
-
-                const { error: musicUploadError } = await supabase.storage
-                    .from('photos')
-                    .uploadToSignedUrl(musicPath, signMusicData.token, musicFile)
-
-                if (musicUploadError) throw musicUploadError
-
-                const { data: { publicUrl } } = supabase.storage.from('photos').getPublicUrl(musicPath)
-                musicUrl = publicUrl
-            }
 
             // Call API to create valentine
             const res = await fetch('/api/create-valentine', {
@@ -230,13 +200,13 @@ export default function CreationForm() {
 
                             <form onSubmit={handleSubmit} className="space-y-6">
                                 <div>
-                                    <label className="block text-lg font-medium text-gray-800 mb-2">Your Name <span className="text-red-500">*</span></label>
+                                    <label className="block text-lg font-medium text-gray-800 mb-2">Partner Name <span className="text-red-500">*</span></label>
                                     <input
                                         type="text"
                                         value={name}
                                         onChange={e => setName(e.target.value)}
                                         className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-pink-500 outline-none"
-                                        placeholder="Who is this from?"
+                                        placeholder="Who is this For ?"
                                         required
                                     />
                                 </div>
@@ -252,18 +222,7 @@ export default function CreationForm() {
                                     />
                                 </div>
 
-                                <div>
-                                    <label className="block text-lg font-medium text-gray-800 mb-2">Background Music (Optional) 🎵</label>
-                                    <div className="border border-gray-300 rounded-lg p-3 bg-gray-50">
-                                        <input
-                                            type="file"
-                                            accept="audio/*"
-                                            onChange={handleMusicChange}
-                                            className="w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-pink-50 file:text-pink-700 hover:file:bg-pink-100"
-                                        />
-                                        {musicFile && <p className="mt-2 text-sm text-green-600">Selected: {musicFile.name}</p>}
-                                    </div>
-                                </div>
+
 
                                 <div>
                                     <label className="block text-lg font-medium text-gray-800 mb-2">Upload 6+ Photos <span className="text-red-500">*</span></label>
@@ -384,7 +343,7 @@ export default function CreationForm() {
                                     setIsPaid(false);
                                     setView("form");
                                     setFiles([]);
-                                    setMusicFile(null);
+
                                     setMessage("");
                                     setName("");
                                 }} className="flex-1 text-gray-500 hover:text-gray-700 underline text-sm">

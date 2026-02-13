@@ -13,7 +13,8 @@ export default function Loader({ onComplete }) {
       setProgress((prev) => {
         if (prev >= 120) {
           clearInterval(timer)
-          setTimeout(onComplete, 1500) // Hang for 1.5s at 120%
+          clearInterval(timer)
+          // setTimeout(onComplete, 1500) // Removed auto-complete
           return 120
         }
         // Slow down slightly after 100% for dramatic effect
@@ -118,6 +119,23 @@ export default function Loader({ onComplete }) {
               {Math.round(progress)}%
             </p>
           </div>
+
+          {/* Tap to Open Button */}
+          {progress >= 120 && (
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.5 }}
+              className="mt-12"
+            >
+              <button
+                onClick={onComplete}
+                className="bg-white text-pink-500 px-8 py-4 rounded-full font-bold text-xl shadow-lg hover:scale-105 active:scale-95 transition-all animate-bounce"
+              >
+                Tap to Open 💌
+              </button>
+            </motion.div>
+          )}
         </div>
       </div>
     </motion.div>

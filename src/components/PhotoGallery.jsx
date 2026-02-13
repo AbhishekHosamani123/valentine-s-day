@@ -103,11 +103,9 @@ export default function PhotoGallery({ onComplete, photos }) {
                         style={{ aspectRatio: '1/1' }}
                       />
                     ) : (
-                      <Image
+                      <img
                         src={item}
                         alt={`Memory ${index + 1}`}
-                        fill
-                        sizes="320px"
                         className="object-cover h-full w-full transition-transform duration-500 group-hover:scale-105 rounded-2xl"
                         style={{ aspectRatio: '1/1' }}
                       />
